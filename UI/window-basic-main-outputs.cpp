@@ -1337,6 +1337,8 @@ bool SimpleOutput::ConfigureRecording(bool updateReplayBuffer)
 						 "RecRBSuffix");
 	int rbTime =
 		config_get_int(main->Config(), "SimpleOutput", "RecRBTime");
+	int rbClipTime =
+		config_get_int(main->Config(), "SimpleOutput", "RecRBClipTime");
 	int rbSize =
 		config_get_int(main->Config(), "SimpleOutput", "RecRBSize");
 	int tracks =
@@ -1356,6 +1358,7 @@ bool SimpleOutput::ConfigureRecording(bool updateReplayBuffer)
 		obs_data_set_string(settings, "extension", ext.c_str());
 		obs_data_set_bool(settings, "allow_spaces", !noSpace);
 		obs_data_set_int(settings, "max_time_sec", rbTime);
+		obs_data_set_int(settings, "clip_time_sec", rbClipTime);
 		obs_data_set_int(settings, "max_size_mb",
 				 usingRecordingPreset ? rbSize : 0);
 	} else {
@@ -2427,6 +2430,7 @@ bool AdvancedOutput::StartReplayBuffer()
 	const char *rbPrefix;
 	const char *rbSuffix;
 	int rbTime;
+	int rbClipTime;
 	int rbSize;
 
 	if (!useStreamEncoder) {
@@ -2461,6 +2465,7 @@ bool AdvancedOutput::StartReplayBuffer()
 		rbSuffix = config_get_string(main->Config(), "SimpleOutput",
 					     "RecRBSuffix");
 		rbTime = config_get_int(main->Config(), "AdvOut", "RecRBTime");
+		rbClipTime = config_get_int(main->Config(), "AdvOut", "RecRBClipTime");
 		rbSize = config_get_int(main->Config(), "AdvOut", "RecRBSize");
 
 		string f = GetFormatString(filenameFormat, rbPrefix, rbSuffix);
@@ -2473,6 +2478,7 @@ bool AdvancedOutput::StartReplayBuffer()
 		obs_data_set_string(settings, "extension", ext.c_str());
 		obs_data_set_bool(settings, "allow_spaces", !noSpace);
 		obs_data_set_int(settings, "max_time_sec", rbTime);
+		obs_data_set_int(settings, "clip_time_sec", rbClipTime);
 		obs_data_set_int(settings, "max_size_mb",
 				 usesBitrate ? 0 : rbSize);
 

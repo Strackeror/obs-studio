@@ -30,11 +30,14 @@ struct ffmpeg_muxer {
 	int64_t cur_time;
 	int64_t max_size;
 	int64_t max_time;
+	int64_t clip_time;
 
 	/* replay buffer */
 	int64_t save_ts;
+	int64_t save_time;
 	int keyframes;
 	obs_hotkey_id hotkey;
+	obs_hotkey_id hotkey_clip;
 	volatile bool muxing;
 	mux_packets_t mux_packets;
 

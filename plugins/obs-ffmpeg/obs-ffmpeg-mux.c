@@ -16,7 +16,12 @@
 ******************************************************************************/
 #include "ffmpeg-mux/ffmpeg-mux.h"
 #include "obs-ffmpeg-mux.h"
+#include "obs-data.h"
+#include "obs-encoder.h"
 #include "obs-ffmpeg-formats.h"
+#include "obs-hotkey.h"
+#include "obs-module.h"
+#include "util/deque.h"
 
 #ifdef _WIN32
 #include "util/windows/win-version.h"
@@ -58,7 +63,9 @@ static inline void replay_buffer_clear(struct ffmpeg_muxer *stream)
 	stream->cur_time = 0;
 	stream->max_size = 0;
 	stream->max_time = 0;
+	stream->clip_time = 0;
 	stream->save_ts = 0;
+	stream->save_time = 0;
 	stream->keyframes = 0;
 }
 
@@ -428,6 +435,8 @@ static inline bool ffmpeg_mux_start_internal(struct ffmpeg_muxer *stream,
 			obs_data_get_int(settings, "max_time_sec") * 1000000LL;
 		stream->max_size = obs_data_get_int(settings, "max_size_mb") *
 				   (1024 * 1024);
+		stream->clip_time =
+			obs_data_get_int(settings, "clip_time_sec") * (1000LL * 1000);
 		stream->split_file = obs_data_get_bool(settings, "split_file");
 		stream->allow_overwrite =
 			obs_data_get_bool(settings, "allow_overwrite");
@@ -971,7 +980,6 @@ static const char *replay_buffer_getname(void *type)
 static void replay_buffer_hotkey(void *data, obs_hotkey_id id,
 				 obs_hotkey_t *hotkey, bool pressed)
 {
-	UNUSED_PARAMETER(id);
 	UNUSED_PARAMETER(hotkey);
 
 	if (!pressed)
@@ -988,6 +996,9 @@ static void replay_buffer_hotkey(void *data, obs_hotkey_id id,
 		}
 
 		stream->save_ts = os_gettime_ns() / 1000LL;
+		if (id == stream->hotkey_clip) {
+			stream->save_time = stream->clip_time;
+		}
 	}
 }
 
@@ -1013,6 +1024,10 @@ static void *replay_buffer_create(obs_data_t *settings, obs_output_t *output)
 	stream->hotkey =
 		obs_hotkey_register_output(output, "ReplayBuffer.Save",
 					   obs_module_text("ReplayBuffer.Save"),
+					   replay_buffer_hotkey, stream);
+	stream->hotkey_clip =
+		obs_hotkey_register_output(output, "ReplayBuffer.Clip",
+					   obs_module_text("ReplayBuffer.Clip"),
 					   replay_buffer_hotkey, stream);
 
 	proc_handler_t *ph = obs_output_get_proc_handler(output);
@@ -1045,6 +1060,7 @@ static bool replay_buffer_start(void *data)
 
 	obs_data_t *s = obs_output_get_settings(stream->output);
 	stream->max_time = obs_data_get_int(s, "max_time_sec") * 1000000LL;
+	stream->clip_time = obs_data_get_int(s, "clip_time_sec") * 1000000LL;
 	stream->max_size = obs_data_get_int(s, "max_size_mb") * (1024 * 1024);
 	obs_data_release(s);
 
@@ -1220,9 +1236,21 @@ static void replay_buffer_save(struct ffmpeg_muxer *stream)
 	int64_t audio_offsets[MAX_AUDIO_MIXES] = {0};
 	int64_t audio_dts_offsets[MAX_AUDIO_MIXES] = {0};
 
+	int64_t start_dts = 0;
+	if (stream->save_time > 0) {
+		struct encoder_packet last_pkt;
+		deque_peek_back(&stream->packets, &last_pkt, size);
+		start_dts = last_pkt.dts_usec - stream->save_time;
+		stream->save_time = 0;
+	}
+
+
 	for (size_t i = 0; i < num_packets; i++) {
 		struct encoder_packet *pkt;
 		pkt = deque_data(&stream->packets, i * size);
+		if (pkt->dts_usec < start_dts) {
+			continue;
+		}
 
 		if (pkt->type == OBS_ENCODER_VIDEO) {
 			if (!found_video) {
@@ -1321,6 +1349,7 @@ static void replay_buffer_defaults(obs_data_t *s)
 {
 	obs_data_set_default_int(s, "max_time_sec", 15);
 	obs_data_set_default_int(s, "max_size_mb", 500);
+	obs_data_set_default_int(s, "clip_time_sec", 10);
 	obs_data_set_default_string(s, "format", "%CCYY-%MM-%DD %hh-%mm-%ss");
 	obs_data_set_default_string(s, "extension", "mp4");
 	obs_data_set_default_bool(s, "allow_spaces", true);
